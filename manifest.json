@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Online Video Helper",
+  "version": "0.1.0",
+  "description": "Mouse zoom and pan for fullscreen online videos.",
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}
