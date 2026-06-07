@@ -5,6 +5,7 @@
   const MAX_SCALE = 6;
   const ZOOM_STEP = 0.0016;
   const RESET_EPSILON = 0.002;
+  const DRAG_THRESHOLD_PX = 4;
   const STYLE_PROPS = [
     "transform",
     "transform-origin",
@@ -69,21 +70,29 @@
     const video = findTargetVideo(event);
     if (!video || video !== activeVideo || zoom.scale <= MIN_SCALE) return;
 
-    takeOver(event);
     drag = {
       startClientX: event.clientX,
       startClientY: event.clientY,
       startX: zoom.x,
-      startY: zoom.y
+      startY: zoom.y,
+      active: false
     };
   }
 
   function onMouseMove(event) {
     if (!drag || !activeVideo) return;
 
+    const dx = event.clientX - drag.startClientX;
+    const dy = event.clientY - drag.startClientY;
+
+    if (!drag.active) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      drag.active = true;
+    }
+
     takeOver(event);
-    zoom.x = drag.startX + event.clientX - drag.startClientX;
-    zoom.y = drag.startY + event.clientY - drag.startClientY;
+    zoom.x = drag.startX + dx;
+    zoom.y = drag.startY + dy;
     clampPan();
     applyZoomStyle(activeVideo);
   }
@@ -91,15 +100,20 @@
   function onMouseUp(event) {
     if (!drag) return;
 
-    takeOver(event);
+    const wasDragging = drag.active;
     drag = null;
-    suppressClickUntil = performance.now() + 250;
+
+    if (wasDragging) {
+      takeOver(event);
+      suppressClickUntil = performance.now() + 250;
+    }
   }
 
   function onClick(event) {
     if (!activeVideo || zoom.scale <= MIN_SCALE) return;
-    if (performance.now() <= suppressClickUntil || isInsideActiveArea(event)) {
+    if (performance.now() <= suppressClickUntil) {
       takeOver(event);
+      suppressClickUntil = 0;
     }
   }
 
@@ -123,6 +137,7 @@
     restoreStyles(activeVideo);
     zoom = createZoomState();
     drag = null;
+    suppressClickUntil = 0;
   }
 
   function resetActiveVideo() {
@@ -132,6 +147,7 @@
     activeVideo = null;
     zoom = createZoomState();
     drag = null;
+    suppressClickUntil = 0;
   }
 
   function findTargetVideo(event) {
@@ -360,17 +376,6 @@
       return event.deltaY * window.innerHeight;
     }
     return event.deltaY;
-  }
-
-  function isInsideActiveArea(event) {
-    const fullscreenRoot = getFullscreenElement();
-    if (fullscreenRoot) {
-      const rect = fullscreenRoot.getBoundingClientRect();
-      return pointInRect(event.clientX, event.clientY, rect);
-    }
-
-    if (!activeVideo) return false;
-    return isViewportCoveringVideo(activeVideo);
   }
 
   function getIntersectionArea(a, b) {

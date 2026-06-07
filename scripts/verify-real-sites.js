@@ -121,6 +121,10 @@ async function verifySite(page, site) {
     const probeAfterWheel = await getEventProbe(page);
 
     await resetEventProbe(page);
+    await clickZoomedVideo(page);
+    const probeAfterClick = await getEventProbe(page);
+
+    await resetEventProbe(page);
     await dragZoomedVideo(page);
     const afterDrag = await getVideoTransformState(page);
     const probeAfterDrag = await getEventProbe(page);
@@ -132,6 +136,7 @@ async function verifySite(page, site) {
       afterWheel,
       afterDrag,
       probeAfterWheel,
+      probeAfterClick,
       probeAfterDrag,
       elapsedMs: Date.now() - startedAt
     };
@@ -148,7 +153,11 @@ async function verifySite(page, site) {
       failures.push(`wheel reached page listener ${probeAfterWheel.counts.wheel} time(s)`);
     }
 
-    for (const type of ["mousedown", "mousemove", "mouseup", "click"]) {
+    if (probeAfterClick.counts.click === 0) {
+      failures.push("ordinary click did not reach page listener while zoomed");
+    }
+
+    for (const type of ["mousemove", "mouseup", "click"]) {
       const count = probeAfterDrag.counts[type];
       if (count !== 0) {
         failures.push(`${type} reached page listener ${count} time(s) during drag`);
@@ -338,6 +347,14 @@ async function zoomAtVideoCenter(page) {
   await page.mouse.move(center.x, center.y);
   await resetEventProbe(page);
   await page.mouse.wheel(0, -280);
+  await page.waitForTimeout(700);
+}
+
+async function clickZoomedVideo(page) {
+  const center = await getVideoCenter(page);
+  await page.mouse.move(center.x, center.y);
+  await resetEventProbe(page);
+  await page.mouse.click(center.x, center.y);
   await page.waitForTimeout(700);
 }
 
