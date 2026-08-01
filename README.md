@@ -4,10 +4,10 @@ A minimal Chrome extension for fullscreen online videos.
 
 ## Features
 
-- Works in fullscreen video playback.
+- Works only while a video is in browser fullscreen (Fullscreen API) playback.
 - Uses the mouse wheel to zoom the video around the pointer position.
 - Supports left-click dragging while zoomed in.
-- Captures the same mouse actions before the page's own player handlers.
+- Captures drag pointer and mouse actions before the page's own player handlers.
 - Adds no popup, controls, overlay, hint text, or visible UI.
 
 ## Install
@@ -25,9 +25,20 @@ Open any online video, enter fullscreen, then:
 - Wheel down to zoom out.
 - Left-click and drag to pan when zoomed in.
 
+The extension does not activate for embedded videos, theater modes, or players
+that merely cover the browser viewport without entering real browser fullscreen.
+
 ## Verify
 
-The real-site check covers fullscreen playback on YouTube and Bilibili:
+The local regression check verifies that viewport-covering videos are ignored
+outside browser fullscreen and activated inside it:
+
+```sh
+npm install
+npm test
+```
+
+The optional real-site check covers fullscreen playback on YouTube and Bilibili:
 
 ```sh
 npm install

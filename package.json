@@ -4,6 +4,8 @@
   "description": "Chrome extension for fullscreen online video zoom and pan.",
   "private": false,
   "scripts": {
+    "test": "npm run test:gate",
+    "test:gate": "node scripts/verify-fullscreen-gate.js",
     "test:sites": "node scripts/verify-real-sites.js"
   },
   "devDependencies": {

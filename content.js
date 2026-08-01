@@ -6,6 +6,25 @@
   const ZOOM_STEP = 0.0016;
   const RESET_EPSILON = 0.002;
   const DRAG_THRESHOLD_PX = 4;
+  const PLAYER_CONTROL_SELECTOR = [
+    "a[href]",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "summary",
+    "[role='button']",
+    "[role='slider']",
+    "[role='checkbox']",
+    "[role='radio']",
+    "[role='switch']",
+    "[role='menuitem']",
+    "[role='tab']",
+    "[aria-valuenow]",
+    "[contenteditable='true']",
+    ".ytp-progress-bar",
+    ".ytp-progress-bar-container"
+  ].join(",");
   const STYLE_PROPS = [
     "transform",
     "transform-origin",
@@ -19,6 +38,7 @@
   let zoom = createZoomState();
   let drag = null;
   let suppressClickUntil = 0;
+  let pointerSequenceActive = false;
 
   function createZoomState() {
     return {
@@ -67,10 +87,77 @@
   function onMouseDown(event) {
     if (event.button !== 0) return;
 
+    if (pointerSequenceActive) {
+      if (isPlayerControlEvent(event)) return;
+      stopPageEvent(event);
+      return;
+    }
+
     const video = findTargetVideo(event);
     if (!video || video !== activeVideo || zoom.scale <= MIN_SCALE) return;
+    if (isPlayerControlEvent(event)) {
+      pointerSequenceActive = false;
+      return;
+    }
 
-    drag = {
+    drag = createDragState(event, null);
+    stopPageEvent(event);
+  }
+
+  function onMouseMove(event) {
+    if (pointerSequenceActive) {
+      stopPageEvent(event);
+      return;
+    }
+
+    updateDrag(event);
+  }
+
+  function onMouseUp(event) {
+    if (pointerSequenceActive) {
+      stopPageEvent(event);
+      return;
+    }
+
+    finishDrag(event);
+  }
+
+  function onPointerDown(event) {
+    if (event.button !== 0 || !event.isPrimary) return;
+
+    const video = findTargetVideo(event);
+    if (!video || video !== activeVideo || zoom.scale <= MIN_SCALE) return;
+    if (isPlayerControlEvent(event)) {
+      pointerSequenceActive = false;
+      return;
+    }
+
+    pointerSequenceActive = true;
+    drag = createDragState(event, event.pointerId);
+    stopPageEvent(event);
+  }
+
+  function onPointerMove(event) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    updateDrag(event);
+  }
+
+  function onPointerUp(event) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    finishDrag(event);
+    releasePointerSequenceAfterCompatibilityEvents();
+  }
+
+  function onPointerCancel(event) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    stopPageEvent(event);
+    drag = null;
+    releasePointerSequenceAfterCompatibilityEvents();
+  }
+
+  function createDragState(event, pointerId) {
+    return {
+      pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
       startX: zoom.x,
@@ -79,14 +166,58 @@
     };
   }
 
-  function onMouseMove(event) {
+  function isPlayerControlEvent(event) {
+    const fullscreenRoot = getFullscreenElement();
+    if (!fullscreenRoot) return false;
+
+    const path =
+      typeof event.composedPath === "function"
+        ? event.composedPath()
+        : buildEventPath(event.target, fullscreenRoot);
+
+    for (const node of path) {
+      if (node === fullscreenRoot) break;
+      if (
+        node instanceof Element &&
+        typeof node.matches === "function" &&
+        node.matches(PLAYER_CONTROL_SELECTOR)
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function buildEventPath(target, root) {
+    const path = [];
+    let node = target;
+
+    while (node) {
+      path.push(node);
+      if (node === root) break;
+      node = node.parentNode || (node.host ? node.host : null);
+    }
+
+    return path;
+  }
+
+  function updateDrag(event) {
     if (!drag || !activeVideo) return;
+
+    if (!isVideoInCurrentFullscreen(activeVideo)) {
+      resetActiveVideo();
+      return;
+    }
 
     const dx = event.clientX - drag.startClientX;
     const dy = event.clientY - drag.startClientY;
 
     if (!drag.active) {
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) {
+        stopPageEvent(event);
+        return;
+      }
       drag.active = true;
     }
 
@@ -97,20 +228,32 @@
     applyZoomStyle(activeVideo);
   }
 
-  function onMouseUp(event) {
+  function finishDrag(event) {
     if (!drag) return;
 
     const wasDragging = drag.active;
     drag = null;
 
+    stopPageEvent(event);
+
     if (wasDragging) {
-      takeOver(event);
+      if (event.cancelable) event.preventDefault();
       suppressClickUntil = performance.now() + 250;
     }
   }
 
+  function releasePointerSequenceAfterCompatibilityEvents() {
+    setTimeout(() => {
+      pointerSequenceActive = false;
+    }, 0);
+  }
+
   function onClick(event) {
     if (!activeVideo || zoom.scale <= MIN_SCALE) return;
+    if (!isVideoInCurrentFullscreen(activeVideo)) {
+      resetActiveVideo();
+      return;
+    }
     if (performance.now() <= suppressClickUntil) {
       takeOver(event);
       suppressClickUntil = 0;
@@ -138,6 +281,7 @@
     zoom = createZoomState();
     drag = null;
     suppressClickUntil = 0;
+    pointerSequenceActive = false;
   }
 
   function resetActiveVideo() {
@@ -148,15 +292,13 @@
     zoom = createZoomState();
     drag = null;
     suppressClickUntil = 0;
+    pointerSequenceActive = false;
   }
 
   function findTargetVideo(event) {
     const fullscreenRoot = getFullscreenElement();
-    if (fullscreenRoot) {
-      return findBestVideo(fullscreenRoot, event);
-    }
-
-    return findViewportVideo(event);
+    if (!fullscreenRoot) return null;
+    return findBestVideo(fullscreenRoot, event);
   }
 
   function getFullscreenElement() {
@@ -183,39 +325,6 @@
       let score = area;
 
       if (containsPointer) score += Number.MAX_SAFE_INTEGER / 4;
-      if (!video.paused) score += Number.MAX_SAFE_INTEGER / 8;
-      if (video === activeVideo) score += Number.MAX_SAFE_INTEGER / 16;
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestVideo = video;
-      }
-    }
-
-    return bestVideo;
-  }
-
-  function findViewportVideo(event) {
-    const videos = collectVideos(document.documentElement)
-      .filter(isUsableVideo)
-      .filter(isViewportCoveringVideo);
-
-    if (!videos.length) return null;
-    return findBestVideoFromList(videos, event);
-  }
-
-  function findBestVideoFromList(videos, event) {
-    let bestVideo = null;
-    let bestScore = -Infinity;
-
-    for (const video of videos) {
-      const rect = video.getBoundingClientRect();
-      const area = rect.width * rect.height;
-      let score = area;
-
-      if (pointInRect(event.clientX, event.clientY, rect)) {
-        score += Number.MAX_SAFE_INTEGER / 4;
-      }
       if (!video.paused) score += Number.MAX_SAFE_INTEGER / 8;
       if (video === activeVideo) score += Number.MAX_SAFE_INTEGER / 16;
 
@@ -276,20 +385,26 @@
     return video.videoWidth > 0 || video.readyState > 0 || !video.paused;
   }
 
-  function isViewportCoveringVideo(video) {
-    const rect = video.getBoundingClientRect();
-    const viewportWidth = Math.max(1, window.innerWidth);
-    const viewportHeight = Math.max(1, window.innerHeight);
-    const horizontalCoverage = rect.width / viewportWidth;
-    const verticalCoverage = rect.height / viewportHeight;
-    const intersection = getIntersectionArea(rect, getViewportRect());
-    const viewportCoverage = intersection / (viewportWidth * viewportHeight);
+  function isVideoInCurrentFullscreen(video) {
+    const fullscreenRoot = getFullscreenElement();
+    if (!fullscreenRoot || !video || !video.isConnected) return false;
 
-    return (
-      viewportCoverage >= 0.72 &&
-      horizontalCoverage >= 0.78 &&
-      verticalCoverage >= 0.72
-    );
+    let node = video;
+    while (node) {
+      if (node === fullscreenRoot) return true;
+      if (
+        typeof fullscreenRoot.contains === "function" &&
+        fullscreenRoot.contains(node)
+      ) {
+        return true;
+      }
+
+      const rootNode =
+        typeof node.getRootNode === "function" ? node.getRootNode() : null;
+      node = rootNode && rootNode.host ? rootNode.host : null;
+    }
+
+    return false;
   }
 
   function ensureBaseRect(video) {
@@ -378,15 +493,6 @@
     return event.deltaY;
   }
 
-  function getIntersectionArea(a, b) {
-    const left = Math.max(a.left, b.left);
-    const right = Math.min(a.right, b.right);
-    const top = Math.max(a.top, b.top);
-    const bottom = Math.min(a.bottom, b.bottom);
-
-    return Math.max(0, right - left) * Math.max(0, bottom - top);
-  }
-
   function getViewportRect() {
     return {
       left: 0,
@@ -419,6 +525,10 @@
 
   function takeOver(event) {
     if (event.cancelable) event.preventDefault();
+    stopPageEvent(event);
+  }
+
+  function stopPageEvent(event) {
     event.stopPropagation();
     event.stopImmediatePropagation();
   }
@@ -427,6 +537,10 @@
     capture: true,
     passive: false
   });
+  window.addEventListener("pointerdown", onPointerDown, { capture: true });
+  window.addEventListener("pointermove", onPointerMove, { capture: true });
+  window.addEventListener("pointerup", onPointerUp, { capture: true });
+  window.addEventListener("pointercancel", onPointerCancel, { capture: true });
   window.addEventListener("mousedown", onMouseDown, { capture: true });
   window.addEventListener("mousemove", onMouseMove, { capture: true });
   window.addEventListener("mouseup", onMouseUp, { capture: true });
