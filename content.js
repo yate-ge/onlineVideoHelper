@@ -6,6 +6,25 @@
   const ZOOM_STEP = 0.0016;
   const RESET_EPSILON = 0.002;
   const DRAG_THRESHOLD_PX = 4;
+  const PLAYER_CONTROL_SELECTOR = [
+    "a[href]",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "summary",
+    "[role='button']",
+    "[role='slider']",
+    "[role='checkbox']",
+    "[role='radio']",
+    "[role='switch']",
+    "[role='menuitem']",
+    "[role='tab']",
+    "[aria-valuenow]",
+    "[contenteditable='true']",
+    ".ytp-progress-bar",
+    ".ytp-progress-bar-container"
+  ].join(",");
   const STYLE_PROPS = [
     "transform",
     "transform-origin",
@@ -69,12 +88,17 @@
     if (event.button !== 0) return;
 
     if (pointerSequenceActive) {
+      if (isPlayerControlEvent(event)) return;
       stopPageEvent(event);
       return;
     }
 
     const video = findTargetVideo(event);
     if (!video || video !== activeVideo || zoom.scale <= MIN_SCALE) return;
+    if (isPlayerControlEvent(event)) {
+      pointerSequenceActive = false;
+      return;
+    }
 
     drag = createDragState(event, null);
     stopPageEvent(event);
@@ -103,6 +127,10 @@
 
     const video = findTargetVideo(event);
     if (!video || video !== activeVideo || zoom.scale <= MIN_SCALE) return;
+    if (isPlayerControlEvent(event)) {
+      pointerSequenceActive = false;
+      return;
+    }
 
     pointerSequenceActive = true;
     drag = createDragState(event, event.pointerId);
@@ -136,6 +164,42 @@
       startY: zoom.y,
       active: false
     };
+  }
+
+  function isPlayerControlEvent(event) {
+    const fullscreenRoot = getFullscreenElement();
+    if (!fullscreenRoot) return false;
+
+    const path =
+      typeof event.composedPath === "function"
+        ? event.composedPath()
+        : buildEventPath(event.target, fullscreenRoot);
+
+    for (const node of path) {
+      if (node === fullscreenRoot) break;
+      if (
+        node instanceof Element &&
+        typeof node.matches === "function" &&
+        node.matches(PLAYER_CONTROL_SELECTOR)
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function buildEventPath(target, root) {
+    const path = [];
+    let node = target;
+
+    while (node) {
+      path.push(node);
+      if (node === root) break;
+      node = node.parentNode || (node.host ? node.host : null);
+    }
+
+    return path;
   }
 
   function updateDrag(event) {

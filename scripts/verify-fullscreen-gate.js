@@ -16,10 +16,20 @@ async function main() {
     await page.setContent(`
       <style>
         html, body { margin: 0; width: 100%; height: 100%; }
-        #player { width: 100%; height: 100%; }
+        #player { position: relative; width: 100%; height: 100%; }
         video { display: block; width: 100%; height: 100%; }
+        #seek {
+          position: absolute;
+          right: 40px;
+          bottom: 10px;
+          left: 40px;
+          height: 20px;
+        }
       </style>
-      <div id="player"><video></video></div>
+      <div id="player">
+        <video></video>
+        <div id="seek" role="slider" aria-valuenow="50"></div>
+      </div>
       <div id="other"></div>
     `);
 
@@ -78,6 +88,13 @@ async function main() {
     assert(clickProbe.pointerup === 0, "pointerup reached the page");
     assert(clickProbe.mouseup === 0, "mouseup reached the page");
     assert(clickProbe.click === 1, "ordinary click did not reach the page");
+
+    await resetPointerProbe(page);
+    await page.mouse.click(640, 700);
+    const controlProbe = await readPointerProbe(page);
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      assert(controlProbe[type] === 1, `${type} did not reach the player control`);
+    }
 
     await page.mouse.move(640, 360);
     await resetPointerProbe(page);
