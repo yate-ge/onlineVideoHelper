@@ -15,8 +15,18 @@ async function main() {
   try {
     await page.setContent(`
       <style>
-        html, body { margin: 0; width: 100%; height: 100%; }
-        #player { position: relative; width: 100%; height: 100%; }
+        html, body {
+          overflow: hidden;
+          margin: 0;
+          width: 100%;
+          height: 100%;
+        }
+        #player {
+          position: relative;
+          overflow: hidden;
+          width: 100%;
+          height: 100%;
+        }
         video { display: block; width: 100%; height: 100%; }
         #seek {
           position: absolute;
@@ -28,7 +38,9 @@ async function main() {
       </style>
       <div id="player">
         <video></video>
-        <div id="seek" role="slider" aria-valuenow="50"></div>
+        <div id="seek" class="bpx-player-progress-area">
+          <div class="bpx-player-progress-wrap"></div>
+        </div>
       </div>
       <div id="other"></div>
     `);
@@ -68,6 +80,7 @@ async function main() {
       "video was transformed while an unrelated element was fullscreen"
     );
 
+    await page.waitForTimeout(200);
     await page.evaluate(() => {
       window.__fullscreenRoot = document.querySelector("#player");
       document.dispatchEvent(new Event("fullscreenchange"));
@@ -89,13 +102,7 @@ async function main() {
     assert(clickProbe.mouseup === 0, "mouseup reached the page");
     assert(clickProbe.click === 1, "ordinary click did not reach the page");
 
-    await resetPointerProbe(page);
-    await page.mouse.click(640, 700);
-    const controlProbe = await readPointerProbe(page);
-    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
-      assert(controlProbe[type] === 1, `${type} did not reach the player control`);
-    }
-
+    await page.waitForTimeout(10);
     await page.mouse.move(640, 360);
     await resetPointerProbe(page);
     await page.mouse.down();
@@ -103,7 +110,20 @@ async function main() {
     await page.mouse.up();
     const dragProbe = await readPointerProbe(page);
     for (const [type, count] of Object.entries(dragProbe)) {
-      assert(count === 0, `${type} reached the page during a drag`);
+      assert(
+        count === 0,
+        `${type} reached the page during a drag: ${JSON.stringify(dragProbe)}`
+      );
+    }
+
+    await resetPointerProbe(page);
+    await page.mouse.click(640, 700);
+    const controlAfterDragProbe = await readPointerProbe(page);
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      assert(
+        controlAfterDragProbe[type] === 1,
+        `${type} did not reach the player control immediately after a drag`
+      );
     }
 
     await page.evaluate(() => {

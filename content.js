@@ -23,7 +23,9 @@
     "[aria-valuenow]",
     "[contenteditable='true']",
     ".ytp-progress-bar",
-    ".ytp-progress-bar-container"
+    ".ytp-progress-bar-container",
+    ".bpx-player-progress-area",
+    ".bpx-player-progress-wrap"
   ].join(",");
   const STYLE_PROPS = [
     "transform",
@@ -252,6 +254,10 @@
     if (!activeVideo || zoom.scale <= MIN_SCALE) return;
     if (!isVideoInCurrentFullscreen(activeVideo)) {
       resetActiveVideo();
+      return;
+    }
+    if (isPlayerControlEvent(event)) {
+      suppressClickUntil = 0;
       return;
     }
     if (performance.now() <= suppressClickUntil) {
