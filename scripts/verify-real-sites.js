@@ -157,7 +157,15 @@ async function verifySite(page, site) {
       failures.push("ordinary click did not reach page listener while zoomed");
     }
 
-    for (const type of ["mousemove", "mouseup", "click"]) {
+    for (const type of [
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "mousedown",
+      "mousemove",
+      "mouseup",
+      "click"
+    ]) {
       const count = probeAfterDrag.counts[type];
       if (count !== 0) {
         failures.push(`${type} reached page listener ${count} time(s) during drag`);
@@ -311,6 +319,9 @@ async function installEventProbe(page) {
     window.__ovhProbe = {
       counts: {
         wheel: 0,
+        pointerdown: 0,
+        pointermove: 0,
+        pointerup: 0,
         mousedown: 0,
         mousemove: 0,
         mouseup: 0,
