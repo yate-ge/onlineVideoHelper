@@ -6,6 +6,8 @@
   const ZOOM_STEP = 0.0016;
   const RESET_EPSILON = 0.002;
   const DRAG_THRESHOLD_PX = 4;
+  const NATIVE_CONTROLS_MIN_HEIGHT = 44;
+  const NATIVE_CONTROLS_MAX_HEIGHT = 64;
   const PLAYER_CONTROL_SELECTOR = [
     "a[href]",
     "button",
@@ -31,7 +33,10 @@
     "transform",
     "transform-origin",
     "transition",
-    "will-change"
+    "will-change",
+    "object-fit",
+    "object-position",
+    "object-view-box"
   ];
 
   const originalStyles = new WeakMap();
@@ -52,6 +57,7 @@
   }
 
   function onWheel(event) {
+    if (isPlayerControlEvent(event)) return;
     const video = findTargetVideo(event);
     if (!video) {
       if (activeVideo) resetActiveVideo();
@@ -172,6 +178,8 @@
     const fullscreenRoot = getFullscreenElement();
     if (!fullscreenRoot) return false;
 
+    if (isNativeVideoControlEvent(event, fullscreenRoot)) return true;
+
     const path =
       typeof event.composedPath === "function"
         ? event.composedPath()
@@ -189,6 +197,28 @@
     }
 
     return false;
+  }
+
+  function isNativeVideoControlEvent(event, fullscreenRoot) {
+    const video =
+      fullscreenRoot instanceof HTMLVideoElement
+        ? fullscreenRoot
+        : activeVideo;
+
+    if (!video || !video.controls || !isVideoInCurrentFullscreen(video)) {
+      return false;
+    }
+
+    const rect = video.getBoundingClientRect();
+    if (!pointInRect(event.clientX, event.clientY, rect)) return false;
+
+    const controlsHeight = clamp(
+      rect.height * 0.1,
+      NATIVE_CONTROLS_MIN_HEIGHT,
+      NATIVE_CONTROLS_MAX_HEIGHT
+    );
+
+    return event.clientY >= rect.bottom - controlsHeight;
   }
 
   function buildEventPath(target, root) {
@@ -450,6 +480,24 @@
 
   function applyZoomStyle(video) {
     rememberStyles(video);
+    // Chromium's UA fullscreen rule forces transform: none !important on the
+    // fullscreen element. Crop the media instead, keeping native controls fixed.
+    if (getFullscreenElement() === video && video.videoWidth > 0 &&
+        CSS.supports("object-view-box", "inset(0px)")) {
+      const { width, height } = zoom.baseRect;
+      const fit = Math.min(width / video.videoWidth, height / video.videoHeight);
+      const offsetX = (width - video.videoWidth * fit) / 2;
+      const offsetY = (height - video.videoHeight * fit) / 2;
+      const left = (-zoom.x / zoom.scale - offsetX) / fit;
+      const top = (-zoom.y / zoom.scale - offsetY) / fit;
+      const right = video.videoWidth - left - width / zoom.scale / fit;
+      const bottom = video.videoHeight - top - height / zoom.scale / fit;
+      video.style.setProperty("object-fit", "fill", "important");
+      video.style.setProperty("object-position", "50% 50%", "important");
+      video.style.setProperty("object-view-box",
+        `inset(${top}px ${right}px ${bottom}px ${left}px)`, "important");
+      return;
+    }
     video.style.setProperty("transform-origin", "0 0", "important");
     video.style.setProperty("transition", "none", "important");
     video.style.setProperty("will-change", "transform", "important");

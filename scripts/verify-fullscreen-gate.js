@@ -127,6 +127,36 @@ async function main() {
     }
 
     await page.evaluate(() => {
+      const video = document.querySelector("video");
+      video.controls = true;
+      window.__fullscreenRoot = video;
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    const nativeFullscreen = await dispatchWheel(page);
+    assert(
+      nativeFullscreen.defaultPrevented,
+      "native fullscreen video wheel was not captured"
+    );
+    assert(
+      nativeFullscreen.transform.includes("scale("),
+      "native fullscreen video was not transformed"
+    );
+
+    await resetPointerProbe(page);
+    await page.mouse.move(640, 700);
+    await page.mouse.down();
+    await page.mouse.move(700, 700, { steps: 2 });
+    await page.mouse.up();
+    const nativeControlsProbe = await readPointerProbe(page);
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
+      assert(
+        nativeControlsProbe[type] === 1,
+        `${type} did not reach native video controls`
+      );
+    }
+
+    await page.evaluate(() => {
       window.__fullscreenRoot = null;
       document.dispatchEvent(new Event("fullscreenchange"));
     });

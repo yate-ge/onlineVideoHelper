@@ -1,10 +1,11 @@
 {
   "name": "online-video-helper",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "Chrome extension for fullscreen online video zoom and pan.",
   "private": false,
   "scripts": {
-    "test": "npm run test:gate",
+    "test": "npm run test:gate && npm run test:native",
+    "test:native": "node scripts/verify-native-video.js",
     "test:gate": "node scripts/verify-fullscreen-gate.js",
     "test:sites": "node scripts/verify-real-sites.js"
   },
